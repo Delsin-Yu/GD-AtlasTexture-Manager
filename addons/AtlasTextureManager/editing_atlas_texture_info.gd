@@ -110,7 +110,8 @@ static func create_empty(region : Rect2, margin : Rect2, filter_clip : bool, nam
 	var name_index := 0;
 	var name_candidate := create_name(name_lower, name_index);
 	while existing_names_lower.has(name_candidate):
-		name_candidate = create_name(name_lower, ++name_index);
+		name_index += 1;
+		name_candidate = create_name(name_lower, name_index);
 	
 	return EditingAtlasTextureInfo.new(null, region, margin, filter_clip, name_candidate, "");
 

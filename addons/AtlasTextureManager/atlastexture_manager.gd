@@ -1,10 +1,10 @@
 @tool
 extends EditorPlugin
 
-static var _temp_slice_color := EditorInterface.get_editor_theme().get_color("warning_color", "Editor");
-static var _default_slice_color := EditorInterface.get_editor_theme().get_color("mono_color", "Editor");
-static var _selected_slice_color := EditorInterface.get_editor_theme().get_color("highlight_color", "Editor");
-static var _preview_slice_color := EditorInterface.get_editor_theme().get_color("error_color", "Editor");
+static var _temp_slice_color := Color.YELLOW;
+static var _default_slice_color := Color.WHITE;
+static var _selected_slice_color := Color.GREEN;
+static var _preview_slice_color := Color.BLUE;
 static var _selected_handle_texture := EditorInterface.get_editor_theme().get_icon("EditorHandle", "EditorIcons");
 
 var _gui_instance : Control;
@@ -316,10 +316,9 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 						if !_inspecting_atlas_texture_info.try_set_region(_modifying_region_buffer): return;
 						_update_inspecting_metrics(_inspecting_atlas_texture_info);
 					_update_controls();
-					
+				
 				flush_region_modifying_buffer_function.call();
 				_is_dragging = false;
-				_editor_drawer.queue_redraw();
 				return;
 				
 			if (mouse_button.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0: return;
@@ -593,10 +592,11 @@ func _create_slice_and_set_to_inspecting(region : Rect2, margin : Rect2, fileter
 			_inspecting_tex_name,
 			_editing_atlas_texture_info
 		);
+	return;
 	_editing_atlas_texture_info.append(_inspecting_atlas_texture_info);
 	_update_inspecting_metrics(_inspecting_atlas_texture_info);
 
-
+# 无法创建多个切片
 func _set_editing_texture(texture : Texture2D) -> void:
 	if _inspecting_texture:
 		_inspecting_texture.changed.disconnect(_on_tex_changed);
@@ -642,7 +642,7 @@ func _reset_inspecting_metrics() -> void:
 	_name_line_edit.text = "";
 
 	_new_label.hide();
-	_delete_slice_btn.hide();
+	_delete_slice_btn.disabled = true;
 
 	_region_x_spin_box.set_value_no_signal(0.0);
 	_region_y_spin_box.set_value_no_signal(0.0);
@@ -661,7 +661,7 @@ func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	var is_temp := info.is_temp();
 	_name_line_edit.editable = is_temp;
 	_new_label.visible = is_temp;
-	_delete_slice_btn.visible = is_temp;
+	_delete_slice_btn.disabled = !is_temp;
 
 	_region_x_spin_box.set_value_no_signal(info.region.position.x);
 	_region_y_spin_box.set_value_no_signal(info.region.position.y);
@@ -800,7 +800,7 @@ func _zoom_button(tooltip_text : String, icon_name : String, on_press : Callable
 #region Draw Utilities
 func _draw_rect_frame(rect : Rect2, handle_texture : Texture2D, color : Color, handle_type : DRAG_TYPE):
 	var positions := _get_handle_positions_for_rect_frame(rect);
-	_editor_drawer.draw_rect(rect, Color.WHITE_SMOKE, false, 4 / _draw_zoom);
+	_editor_drawer.draw_rect(rect, Color.BLACK, false, 4 / _draw_zoom);
 	_editor_drawer.draw_rect(rect, color, false, 2 / _draw_zoom);
 	
 	var handle_size := handle_texture.get_size() * 1.5 / _draw_zoom;
@@ -819,13 +819,15 @@ func _draw_rect_frame(rect : Rect2, handle_texture : Texture2D, color : Color, h
 #endregion
 		
 #region Other
+
 func _find_texture_in_dir(source_tex : Texture2D, directory : EditorFileSystemDirectory, scan_result : Array[EditingAtlasTextureInfo]):
 	var file_count := directory.get_file_count();
 	for i in range(file_count):
+		if directory.get_file_type(i) != &"AtlasTexture": continue;
 		var file_path := directory.get_file_path(i);
 		var resource := ResourceLoader.load(file_path, "", ResourceLoader.CACHE_MODE_IGNORE);
 		var atlas_candidate := resource as AtlasTexture;
-		if atlas_candidate and atlas_candidate.atlas == source_tex:
+		if atlas_candidate.atlas == source_tex:
 			scan_result.append(EditingAtlasTextureInfo.create(atlas_candidate, file_path));
 	
 func _find_texture_in_dir_recursive(source_tex : Texture2D, directory : EditorFileSystemDirectory, scan_result : Array[EditingAtlasTextureInfo]):

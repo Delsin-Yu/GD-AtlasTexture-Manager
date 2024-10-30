@@ -7,17 +7,21 @@ static var _selected_slice_color := EditorInterface.get_editor_theme().get_color
 static var _preview_slice_color := EditorInterface.get_editor_theme().get_color("error_color", "Editor");
 static var _selected_handle_texture := EditorInterface.get_editor_theme().get_icon("EditorHandle", "EditorIcons");
 
-var gui_instance : Control;
+var _gui_instance : Control;
+static var _window_name := "AtlasTexture Manager";
+static var _window_name_changed := "(*) AtlasTexture Manager";
 
 #region EditorMethods
 func _enter_tree() -> void:
-	gui_instance = _build_gui();
-	add_control_to_bottom_panel(gui_instance, "AtlasTexture Manager");
+	_gui_instance = _build_gui();
+	_update_controls();
+	_reset_inspecting_metrics();
+	add_control_to_dock(EditorPlugin.DOCK_SLOT_LEFT_UR, _gui_instance);
 	pass;
 
 func _exit_tree() -> void:
-	remove_control_from_bottom_panel(gui_instance);
-	gui_instance.queue_free();
+	remove_control_from_bottom_panel(_gui_instance);
+	_gui_instance.queue_free();
 	pass;
 
 func _handles(object) -> bool:
@@ -53,12 +57,12 @@ func _build_top_tool_bar() -> Control:
 		var file_system := EditorInterface.get_resource_filesystem();
 		
 		if all_directories:
-			var directory = file_system.get_filesystem();
+			var directory := file_system.get_filesystem();
 			_find_texture_in_dir_recursive(_inspecting_texture, directory, scan_result);
 		else:
-			var source_path = _inspecting_texture.resource_path;
-			var directory_path = source_path.get_base_dir();
-			var directory = file_system.get_filesystem_path(directory_path);
+			var source_path := _inspecting_texture.resource_path;
+			var directory_path := source_path.get_base_dir();
+			var directory := file_system.get_filesystem_path(directory_path);
 			_find_texture_in_dir(_inspecting_texture, directory, scan_result);
 			pass
 		
@@ -75,10 +79,14 @@ func _build_top_tool_bar() -> Control:
 	top_tool_container.add_child(scan_in_proj_btn);
 	return top_tool_container;
 	
+
+var _save_btn : Button;
+var _discard_btn : Button;
+	
 func _build_btm_tool_bar(additive_elements : Array[Control]) -> Control:
 	var btm_tool_container := HBoxContainer.new();
 	
-	var save_btn := _button("Discard", func():
+	_save_btn = _button("Discard", func():
 		var deleting_atlas : Array[EditingAtlasTextureInfo] = [];
 		for info in _editing_atlas_texture_info:
 			if info.is_temp(): deleting_atlas.append(info);
@@ -93,7 +101,7 @@ func _build_btm_tool_bar(additive_elements : Array[Control]) -> Control:
 			_reset_inspecting_metrics();
 	);
 	
-	var discard_btn := _button("Create & Update", func():
+	_discard_btn = _button("Create & Update", func():
 		var editor_file_system = EditorInterface.get_resource_filesystem();
 		for info in _editing_atlas_texture_info:
 			var path := info.apply_changes(_inspecting_texture, _current_source_texture_path)
@@ -111,8 +119,8 @@ func _build_btm_tool_bar(additive_elements : Array[Control]) -> Control:
 	for item in additive_elements:
 		btm_tool_container.add_child(item)
 	btm_tool_container.add_child(_hspacer());
-	btm_tool_container.add_child(save_btn);
-	btm_tool_container.add_child(discard_btn);
+	btm_tool_container.add_child(_save_btn);
+	btm_tool_container.add_child(_discard_btn);
 	
 	return btm_tool_container;
 	
@@ -133,7 +141,6 @@ var _draw_zoom : float;
 var _is_dragging : bool;
 var _is_updating_scroll : bool;
 var _is_requesting_center : bool;
-var _modifying_region : Rect2;
 var _drag_type : DRAG_TYPE;
 var _editing_atlas_texture_info : Array[EditingAtlasTextureInfo] = [];
 var _slice_preview : Array[Rect2] = [];
@@ -156,7 +163,9 @@ enum DRAG_TYPE
 	HANDLE_BOTTOM_LEFT = 6,
 	HANDLE_LEFT = 7,
 }
-	
+
+var _mini_inspector_window : Control;
+
 func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	var main_viewport := PanelContainer.new();
 	main_viewport.size_flags_vertical = Control.SIZE_EXPAND_FILL;
@@ -167,15 +176,14 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	_editor_drawer_main.size_flags_vertical = Control.SIZE_EXPAND_FILL;
 	main_viewport.add_child(_editor_drawer_main);
 	
-	var mini_inspector := _build_mini_inspector();
-	_editor_drawer_main.add_child(mini_inspector);
-	# HELP
-	mini_inspector.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE);
-	
 	_editor_drawer = Control.new();
 	_editor_drawer.clip_contents = true;
 	_editor_drawer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT,Control.PRESET_MODE_KEEP_SIZE);
 	_editor_drawer_main.add_child(_editor_drawer);
+	
+	_mini_inspector_window = _build_mini_inspector();
+	_editor_drawer.add_child(_mini_inspector_window);
+	_mini_inspector_window.call_deferred(&"set_anchors_and_offsets_preset", Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10);
 	
 	_hscroll = HScrollBar.new();
 	_vscroll = VScrollBar.new();
@@ -211,7 +219,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 		var scroll_rect := Rect2(Vector2.ZERO, _inspecting_texture.get_size());
 		
 		if _is_dragging:
-			_draw_rect_frame(_modifying_region, _selected_handle_texture, _selected_slice_color, _drag_type);
+			_draw_rect_frame(_modifying_region_buffer, _selected_handle_texture, _selected_slice_color, _drag_type);
 		else:
 			for info in _editing_atlas_texture_info:
 				if info == _inspecting_atlas_texture_info:
@@ -219,7 +227,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 				_draw_rect_frame(info.region, _selected_handle_texture, _default_slice_color if !info.is_temp() else _temp_slice_color, DRAG_TYPE.AREA);
 				
 			if _inspecting_atlas_texture_info:
-				_draw_rect_frame(_modifying_region, _selected_handle_texture, _selected_slice_color, DRAG_TYPE.NONE);
+				_draw_rect_frame(_modifying_region_buffer, _selected_handle_texture, _selected_slice_color, DRAG_TYPE.NONE);
 				
 		if _slicer_toggle.button_pressed:
 			for preview_rect in _slice_preview:
@@ -274,22 +282,20 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	_editor_drawer.gui_input.connect(func(input_event : InputEvent):
 		if !_inspecting_texture: return;
 		
-		_get_view_panner().process_gui_input(input_event, Rect2());
+		if _get_view_panner().process_gui_input(input_event, Rect2()): return;
 		
 		var mouse_motion := input_event as InputEventMouseMotion;
 		if mouse_motion:
 			if (mouse_motion.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0: return;
 			if !_is_dragging: return
-				
+			
 			var new_mouse_position := (mouse_motion.position + _draw_offsets * _draw_zoom) / _draw_zoom;
 			var diff := new_mouse_position + _dragging_mouse_position_offset - _dragging_handle_position;
 
 			var region := _dragging_handle_start_region;
 
-			if _dragging_handle == DRAG_TYPE.AREA:
-				region.position += diff;
-			else:
-				region = _calculate_offset(region, _dragging_handle, diff);
+			if _dragging_handle == DRAG_TYPE.AREA: region.position += diff;
+			else: region = _calculate_offset(region, _dragging_handle, diff);
 				
 			region = Rect2(region.position.round(), region.size.round());
 			
@@ -301,13 +307,17 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 		if mouse_button:
 			if !mouse_button.pressed:
 				if !_is_dragging: return;
-				if !_inspecting_atlas_texture_info:
-					if !_modifying_region_buffer.has_area(): return;
-					_create_slice_and_set_to_inspecting(_modifying_region_buffer, Rect2(), false);
-				else:
-					if !_inspecting_atlas_texture_info.try_set_region(_modifying_region_buffer): return;
-					_update_inspecting_metrics(_inspecting_atlas_texture_info);
-				_update_controls();
+				
+				var flush_region_modifying_buffer_function := func():
+					if !_inspecting_atlas_texture_info:
+						if !_modifying_region_buffer.has_area(): return;
+						_create_slice_and_set_to_inspecting(_modifying_region_buffer, Rect2(), false);
+					else:
+						if !_inspecting_atlas_texture_info.try_set_region(_modifying_region_buffer): return;
+						_update_inspecting_metrics(_inspecting_atlas_texture_info);
+					_update_controls();
+					
+				flush_region_modifying_buffer_function.call();
 				_is_dragging = false;
 				_editor_drawer.queue_redraw();
 				return;
@@ -315,7 +325,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 			if (mouse_button.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0: return;
 			if _is_dragging: return;
 			
-			var local_mouse_position := (mouse_button.position + _draw_offsets * _draw_offsets) / _draw_zoom;
+			var local_mouse_position := (mouse_button.position + _draw_offsets * _draw_zoom) / _draw_zoom;
 			
 			var process_mouse_drag_update_function := func():
 				var draw_zoom := 11.25 / _draw_zoom;
@@ -348,6 +358,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 			if !_inspecting_atlas_texture_info:
 				_dragging_mouse_position_offset = Vector2.ZERO;
 				_dragging_handle_start_region = Rect2(local_mouse_position, Vector2.ZERO);
+				_modifying_region_buffer = _dragging_handle_start_region;
 				_reset_inspecting_metrics();
 			else:
 				_dragging_mouse_position_offset = local_mouse_position - _dragging_handle_position;
@@ -355,7 +366,6 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 				_modifying_region_buffer = _dragging_handle_start_region;
 				_update_controls();
 				_update_inspecting_metrics(_inspecting_atlas_texture_info);
-				
 			_editor_drawer.queue_redraw();
 			pass;
 		var magnify_gesture := input_event as InputEventMagnifyGesture;
@@ -377,7 +387,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	bottom_elements.append(_zoom_button("Zoom Reset", "ZoomReset", func(): _zoom(1.0, _editor_drawer.size / 2.0)));
 	bottom_elements.append(_zoom_button("Zoom In", "ZoomMore", func(): _zoom(_draw_zoom * 1.5, _editor_drawer.size / 2.0)));
 	
-	var scroll_changed = func(value : float):
+	var scroll_changed := func(value : float):
 		if _is_updating_scroll: return;
 		_draw_offsets = Vector2(_hscroll.value, _vscroll.value);
 		_editor_drawer.queue_redraw();
@@ -399,21 +409,25 @@ var _margin_y_spin_box : SpinBox;
 var _margin_w_spin_box : SpinBox;
 var _margin_h_spin_box : SpinBox;
 var _filter_clip_check_box : CheckBox;
+var _delete_slice_btn : Button;
 
 func _build_mini_inspector() -> Control:
 	var outer_container := PanelContainer.new();
-	outer_container.add_child(Panel.new());
-	var margin_container = MarginContainer.new();
+	outer_container.self_modulate = Color(Color.WHITE, .5);
+	var panel := Panel.new();
+	panel.self_modulate = Color(Color.WHITE, .5);
+	outer_container.add_child(panel);
+	var margin_container := MarginContainer.new();
 	margin_container.add_theme_constant_override(&"margin_left", 10);
 	margin_container.add_theme_constant_override(&"margin_top", 10);
 	margin_container.add_theme_constant_override(&"margin_right", 10);
 	margin_container.add_theme_constant_override(&"margin_bottom", 10);
 	outer_container.add_child(margin_container);
-	var vbox_container = VBoxContainer.new();
+	var vbox_container := VBoxContainer.new();
 	vbox_container.alignment = BoxContainer.ALIGNMENT_CENTER;
 	margin_container.add_child(vbox_container);
 	
-	var title_hbox = HBoxContainer.new();
+	var title_hbox := HBoxContainer.new();
 	title_hbox.alignment = BoxContainer.ALIGNMENT_CENTER;
 	vbox_container.add_child(title_hbox);
 	
@@ -422,64 +436,115 @@ func _build_mini_inspector() -> Control:
 	title_hbox.add_child(_title_label);
 	title_hbox.add_child(_new_label);
 	
-	var grid = GridContainer.new();
+	var grid := GridContainer.new();
 	grid.columns = 2;
 	grid.add_theme_constant_override("h_separation", 20);
 	vbox_container.add_child(grid);
 	
 	grid.add_child(_label("Name"));
-	_name_line_edit = LineEdit.new();
+	_name_line_edit = _line_edit(func(value : String):
+		if !_inspecting_atlas_texture_info or !_inspecting_atlas_texture_info.is_temp() or !_inspecting_atlas_texture_info.try_set_name(value): return;
+		_update_controls();
+	);
 	grid.add_child(_name_line_edit);
 	grid.add_child(_label("Region"));
 	
-	var region_grid = GridContainer.new();
+	var region_grid := GridContainer.new();
 	region_grid.columns = 4;
 	grid.add_child(region_grid);
 	
 	region_grid.add_child(_label("X"));
 	
-	_region_x_spin_box = _spin();
+	_region_x_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var region := _inspecting_atlas_texture_info.region;
+		region.position.x = value;
+		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_update_controls();
+	);
 	region_grid.add_child(_region_x_spin_box);
 	
 	region_grid.add_child(_label("Y"));
 	
-	_region_y_spin_box = _spin();
+	_region_y_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var region := _inspecting_atlas_texture_info.region;
+		region.position.y = value;
+		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_update_controls();
+	);
 	region_grid.add_child(_region_y_spin_box);
 	
 	region_grid.add_child(_label("W"));
 	
-	_region_w_spin_box = _spin();
+	_region_w_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var region := _inspecting_atlas_texture_info.region;
+		region.size.x = value;
+		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_update_controls();
+	);
 	region_grid.add_child(_region_w_spin_box);
 	
 	region_grid.add_child(_label("H"));
 	
-	_region_h_spin_box = _spin();
+	_region_h_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var region := _inspecting_atlas_texture_info.region;
+		region.size.y = value;
+		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_update_controls();
+	);
 	region_grid.add_child(_region_h_spin_box);
 	
 	grid.add_child(_label("Margin"));
 	
-	var margin_grid = GridContainer.new();
+	var margin_grid := GridContainer.new();
 	margin_grid.columns = 4;
 	grid.add_child(margin_grid);
 	
 	margin_grid.add_child(_label("X"));
 	
-	_margin_x_spin_box = _spin();
+	_margin_x_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var margin := _inspecting_atlas_texture_info.margin;
+		margin.position.x = value;
+		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
+		_update_controls();
+	);
 	margin_grid.add_child(_margin_x_spin_box);
 	
 	margin_grid.add_child(_label("Y"));
 	
-	_margin_y_spin_box = _spin();
+	_margin_y_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var margin := _inspecting_atlas_texture_info.margin;
+		margin.position.y = value;
+		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
+		_update_controls();
+	);
 	margin_grid.add_child(_margin_y_spin_box);
 	
 	margin_grid.add_child(_label("W"));
 	
-	_margin_w_spin_box = _spin();
+	_margin_w_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var margin := _inspecting_atlas_texture_info.margin;
+		margin.size.x = value;
+		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
+		_update_controls();
+	);
 	margin_grid.add_child(_margin_w_spin_box);
 	
 	margin_grid.add_child(_label("H"));
 	
-	_margin_h_spin_box = _spin();
+	_margin_h_spin_box = _spin(func(value : float):
+		if !_inspecting_atlas_texture_info: return;
+		var margin := _inspecting_atlas_texture_info.margin;
+		margin.size.y = value;
+		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
+		_update_controls();
+	);
 	margin_grid.add_child(_margin_h_spin_box);
 	
 	grid.add_child(_label("Filter Clip"));
@@ -487,18 +552,21 @@ func _build_mini_inspector() -> Control:
 	_filter_clip_check_box = _check_box("Enabled");
 	grid.add_child(_filter_clip_check_box);
 	
-	vbox_container.add_child(_button("Delete", func():
-		# TODO
-		pass;
-	));
+	_delete_slice_btn = _button("Delete", func():
+		if !_inspecting_atlas_texture_info or !_inspecting_atlas_texture_info.is_temp(): return;
+		_editing_atlas_texture_info.erase(_inspecting_atlas_texture_info);
+		_inspecting_atlas_texture_info = null;
+		_update_controls();
+	);
+	vbox_container.add_child(_delete_slice_btn);
 	
 	return outer_container;
 
 func _get_handle_positions_for_rect_frame(rect : Rect2) -> Array[Vector2]:
-	var raw_end_point_0 = rect.position;
-	var raw_end_point_1 = rect.position + Vector2(rect.size.x, 0);
-	var raw_end_point_2 = rect.position + rect.size;
-	var raw_end_point_3 = rect.position + Vector2(0, rect.size.y);
+	var raw_end_point_0 := rect.position;
+	var raw_end_point_1 := rect.position + Vector2(rect.size.x, 0);
+	var raw_end_point_2 := rect.end;
+	var raw_end_point_3 := rect.position + Vector2(0, rect.size.y);
 	var array : Array[Vector2] = [];
 	array.resize(8);
 	_calculate_handle_position(raw_end_point_0, raw_end_point_3, raw_end_point_1, array, 0);
@@ -552,7 +620,7 @@ func _set_editing_texture(texture : Texture2D) -> void:
 	pass;
 
 func _on_tex_changed() -> void:
-	if !gui_instance or !gui_instance.visible: return;
+	if !_gui_instance or !_gui_instance.visible: return;
 	_update_inspecting_texture();
 
 func _update_inspecting_texture() -> void:
@@ -571,35 +639,78 @@ func _update_inspecting_texture() -> void:
 
 
 func _reset_inspecting_metrics() -> void:
-	# TODO
-	pass;
+	_name_line_edit.text = "";
+
+	_new_label.hide();
+	_delete_slice_btn.hide();
+
+	_region_x_spin_box.set_value_no_signal(0.0);
+	_region_y_spin_box.set_value_no_signal(0.0);
+	_region_w_spin_box.set_value_no_signal(0.0);
+	_region_h_spin_box.set_value_no_signal(0.0);
+
+	_margin_x_spin_box.set_value_no_signal(0.0);
+	_margin_y_spin_box.set_value_no_signal(0.0);
+	_margin_w_spin_box.set_value_no_signal(0.0);
+	_margin_h_spin_box.set_value_no_signal(0.0);
+
+	_filter_clip_check_box.set_pressed_no_signal(false);
 
 func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
-	# TODO
-	pass;
+	_name_line_edit.text = info.name;
+	var is_temp := info.is_temp();
+	_name_line_edit.editable = is_temp;
+	_new_label.visible = is_temp;
+	_delete_slice_btn.visible = is_temp;
+
+	_region_x_spin_box.set_value_no_signal(info.region.position.x);
+	_region_y_spin_box.set_value_no_signal(info.region.position.y);
+	_region_w_spin_box.set_value_no_signal(info.region.size.x);
+	_region_h_spin_box.set_value_no_signal(info.region.size.y);
+
+	_margin_x_spin_box.set_value_no_signal(info.margin.position.x);
+	_margin_y_spin_box.set_value_no_signal(info.margin.position.y);
+	_margin_w_spin_box.set_value_no_signal(info.margin.size.x);
+	_margin_h_spin_box.set_value_no_signal(info.margin.size.y);
+
+	_filter_clip_check_box.set_pressed_no_signal(info.filter_clip);
 	
 func _update_controls() -> void:
-	# TODO
+	var is_editing_asset := true if _inspecting_texture else false;
+	_gui_instance.propagate_call(&"set_disabled", [!is_editing_asset]);
+	_gui_instance.propagate_call(&"set_editable", [is_editing_asset]);
+	_gui_instance.modulate = Color.WHITE if is_editing_asset else Color(1.0, 1.0, 1.0, 0.5);
+
+	var has_pending_changes := false;
+	
+	for item in _editing_atlas_texture_info:
+		if !item.modified: continue;
+		has_pending_changes = true;
+		break;
+	
+	_gui_instance.name = _window_name if !has_pending_changes else _window_name_changed;
+
+	_discard_btn.disabled = !has_pending_changes;
+	_save_btn.disabled = !has_pending_changes;
+
+	var is_inspecting_atlas_texture := true if _inspecting_atlas_texture_info else false;
+	_mini_inspector_window.propagate_call(&"set_disabled", [!is_inspecting_atlas_texture]);
+	_mini_inspector_window.propagate_call(&"set_editable", [is_inspecting_atlas_texture]);
+	_mini_inspector_window.modulate = Color.WHITE if is_inspecting_atlas_texture else Color(1.0, 1.0, 1.0, 0.5);
+
+	_editor_drawer.queue_redraw();
 	pass;
 
 func _calculate_offset(region : Rect2, drag_type : DRAG_TYPE, diff : Vector2) -> Rect2:
 	match drag_type:
-		DRAG_TYPE.HANDLE_TOP_LEFT:
-			return region.grow_individual(-diff.x, -diff.y, 0, 0);
-		DRAG_TYPE.HANDLE_TOP:
-			return region.grow_individual(0, -diff.y, 0, 0);
-		DRAG_TYPE.HANDLE_TOP_RIGHT:
-			return region.grow_individual(0, -diff.y, diff.x, 0);
-		DRAG_TYPE.HANDLE_RIGHT:
-			return region.grow_individual(0, 0, diff.x, 0);
-		DRAG_TYPE.HANDLE_BOTTOM_RIGHT:
-			return region.grow_individual(0, 0, diff.x, diff.y);
-		DRAG_TYPE.HANDLE_BOTTOM:
-			return region.grow_individual(0, 0, 0, diff.y);
-		DRAG_TYPE.HANDLE_BOTTOM_LEFT:
-			return region.grow_individual(-diff.x, 0, 0, diff.y);
-		DRAG_TYPE.HANDLE_LEFT:
-			return region.grow_individual(-diff.x, 0, 0, 0);
+		DRAG_TYPE.HANDLE_TOP_LEFT: return region.grow_individual(-diff.x, -diff.y, 0, 0);
+		DRAG_TYPE.HANDLE_TOP: return region.grow_individual(0, -diff.y, 0, 0);
+		DRAG_TYPE.HANDLE_TOP_RIGHT: return region.grow_individual(0, -diff.y, diff.x, 0);
+		DRAG_TYPE.HANDLE_RIGHT: return region.grow_individual(0, 0, diff.x, 0);
+		DRAG_TYPE.HANDLE_BOTTOM_RIGHT: return region.grow_individual(0, 0, diff.x, diff.y);
+		DRAG_TYPE.HANDLE_BOTTOM: return region.grow_individual(0, 0, 0, diff.y);
+		DRAG_TYPE.HANDLE_BOTTOM_LEFT: return region.grow_individual(-diff.x, 0, 0, diff.y);
+		DRAG_TYPE.HANDLE_LEFT: return region.grow_individual(-diff.x, 0, 0, 0);
 	return region;
 
 func _get_view_panner() -> ViewPanner:
@@ -644,8 +755,14 @@ func _button(text : String, on_press : Callable) -> Button:
 	button.pressed.connect(on_press);
 	return button;
 
-func _spin() -> SpinBox:
+func _line_edit(value_changed : Callable) -> LineEdit:
+	var line_edit := LineEdit.new();
+	line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
+	return line_edit;
+
+func _spin(value_changed : Callable) -> SpinBox:
 	var spin := SpinBox.new();
+	spin.value_changed.connect(value_changed);
 	spin.suffix = "px";
 	spin.max_value = 0;
 	spin.min_value = 0;
@@ -683,7 +800,7 @@ func _zoom_button(tooltip_text : String, icon_name : String, on_press : Callable
 #region Draw Utilities
 func _draw_rect_frame(rect : Rect2, handle_texture : Texture2D, color : Color, handle_type : DRAG_TYPE):
 	var positions := _get_handle_positions_for_rect_frame(rect);
-	_editor_drawer.draw_rect(rect, Color.BLACK, false, 4 / _draw_zoom);
+	_editor_drawer.draw_rect(rect, Color.WHITE_SMOKE, false, 4 / _draw_zoom);
 	_editor_drawer.draw_rect(rect, color, false, 2 / _draw_zoom);
 	
 	var handle_size := handle_texture.get_size() * 1.5 / _draw_zoom;
@@ -707,15 +824,15 @@ func _find_texture_in_dir(source_tex : Texture2D, directory : EditorFileSystemDi
 	for i in range(file_count):
 		var file_path := directory.get_file_path(i);
 		var resource := ResourceLoader.load(file_path, "", ResourceLoader.CACHE_MODE_IGNORE);
-		var atlas_candidate = resource as AtlasTexture;
+		var atlas_candidate := resource as AtlasTexture;
 		if atlas_candidate and atlas_candidate.atlas == source_tex:
 			scan_result.append(EditingAtlasTextureInfo.create(atlas_candidate, file_path));
 	
 func _find_texture_in_dir_recursive(source_tex : Texture2D, directory : EditorFileSystemDirectory, scan_result : Array[EditingAtlasTextureInfo]):
 	_find_texture_in_dir(source_tex, directory, scan_result);
-	var sub_dir_count = directory.get_subdir_count();
+	var sub_dir_count := directory.get_subdir_count();
 	for i in range(sub_dir_count):
-		var sub_dir = directory.get_subdir(i);
+		var sub_dir := directory.get_subdir(i);
 		_find_texture_in_dir_recursive(source_tex, sub_dir, scan_result);
 #endregion
 

@@ -19,15 +19,14 @@ func _enter_tree() -> void:
 	_gui_instance = _build_gui();
 	_update_controls();
 	_reset_inspecting_metrics();
+	_hide_slicer_menu();
 	add_control_to_dock(EditorPlugin.DOCK_SLOT_LEFT_UR, _gui_instance);
 	_resource_filesystem.filesystem_changed.connect(_remove_invalid_atlas_instances);
-	pass;
 
 func _exit_tree() -> void:
 	remove_control_from_bottom_panel(_gui_instance);
 	_resource_filesystem.filesystem_changed.disconnect(_remove_invalid_atlas_instances);
 	_gui_instance.queue_free();
-	pass;
 
 func _handles(object) -> bool:
 	var texture2D = object as Texture2D;
@@ -41,13 +40,16 @@ func _edit(object : Object) -> void:
 
 func _remove_invalid_atlas_instances() -> void:
 	if !_editing_atlas_texture_info: return;
-	var modified := false;
 	for info in _editing_atlas_texture_info:
 		if info.is_temp(): continue;
 		if ResourceLoader.exists(info.resource_path): continue;
 		info.convert_to_temp();
-		modified = true;
+		
 	_update_controls();
+		
+	if !_inspecting_texture: return;
+	if !ResourceLoader.exists(_inspecting_texture.resource_path):
+		_set_editing_texture(null);
 
 func _build_gui() -> Control:
 	var view := VBoxContainer.new();
@@ -62,6 +64,11 @@ func _build_top_tool_bar() -> Control:
 	var top_tool_container := HBoxContainer.new();
 	
 	_slicer_toggle = _check_button("AtlasTexture Slicer");
+	_slicer_toggle.toggled.connect(func(value : bool):
+		if !_inspecting_texture: return;
+		if value : _show_slicer_menu();
+		else: _hide_slicer_menu();
+	);
 	
 	var scan_function := func(all_directories : bool):
 		_editing_atlas_texture_info.clear();
@@ -77,7 +84,6 @@ func _build_top_tool_bar() -> Control:
 			var directory_path := source_path.get_base_dir();
 			var directory := _resource_filesystem.get_filesystem_path(directory_path);
 			_find_texture_in_dir(_inspecting_texture, directory, scan_result);
-			pass
 		
 		_editing_atlas_texture_info.append_array(scan_result);
 		_reset_inspecting_metrics();
@@ -91,7 +97,6 @@ func _build_top_tool_bar() -> Control:
 	top_tool_container.add_child(scan_in_dir_btn);
 	top_tool_container.add_child(scan_in_proj_btn);
 	return top_tool_container;
-
 
 var _save_btn : Button;
 var _discard_btn : Button;
@@ -177,6 +182,7 @@ enum DRAG_TYPE
 }
 
 var _mini_inspector_window : Control;
+var _slicer_window : Control;
 
 func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	var main_viewport := PanelContainer.new();
@@ -196,6 +202,10 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	_mini_inspector_window = _build_mini_inspector();
 	_editor_drawer.add_child(_mini_inspector_window);
 	_mini_inspector_window.call_deferred(&"set_anchors_and_offsets_preset", Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 10);
+	
+	_slicer_window = _build_slicer_menu();
+	_editor_drawer.add_child(_slicer_window);
+	_slicer_window.call_deferred(&"set_anchors_and_offsets_preset", Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, 10);
 	
 	_hscroll = HScrollBar.new();
 	_vscroll = VScrollBar.new();
@@ -316,11 +326,9 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 			else: region = _calculate_offset(region, _dragging_handle, diff);
 				
 			region = Rect2(region.position.round(), region.size.round());
-			
 			_modifying_region_buffer = region;
-			
 			_editor_drawer.queue_redraw();
-			pass;
+			
 		var mouse_button := input_event as InputEventMouseButton;
 		if mouse_button:
 			if !mouse_button.pressed:
@@ -385,16 +393,13 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 				_update_controls();
 				_update_inspecting_metrics(_inspecting_atlas_texture_info);
 			_editor_drawer.queue_redraw();
-			pass;
 		var magnify_gesture := input_event as InputEventMagnifyGesture;
 		if magnify_gesture:
 			_zoom(_draw_zoom * magnify_gesture.factor, magnify_gesture.position);
-			pass;
 		var pan_gesture := input_event as InputEventPanGesture;
 		if pan_gesture:
 			_hscroll.value += _hscroll.page * pan_gesture.delta.x / 8;
 			_vscroll.value += _vscroll.page * pan_gesture.delta.y / 8;
-			pass;
 	);
 	_editor_drawer.focus_exited.connect(_get_view_panner().release_pan_key);
 #endregion
@@ -423,7 +428,7 @@ var _margin_edit : Vector4iEdit;
 var _filter_clip_check_box : CheckBox;
 var _delete_slice_btn : Button;
 
-func _build_mini_inspector() -> Control:
+func _build_base_float_window(container : Array[VBoxContainer]) -> Control:
 	var outer_container := PanelContainer.new();
 	outer_container.self_modulate = Color(Color.WHITE, .5);
 	var panel := Panel.new();
@@ -438,6 +443,14 @@ func _build_mini_inspector() -> Control:
 	var vbox_container := VBoxContainer.new();
 	vbox_container.alignment = BoxContainer.ALIGNMENT_CENTER;
 	margin_container.add_child(vbox_container);
+	container.clear();
+	container.append(vbox_container);
+	return outer_container;
+
+func _build_mini_inspector() -> Control:
+	var array : Array[VBoxContainer] = [];
+	var outer_container := _build_base_float_window(array);
+	var vbox_container = array[0];
 	
 	var title_hbox := HBoxContainer.new();
 	title_hbox.alignment = BoxContainer.ALIGNMENT_CENTER;
@@ -461,25 +474,19 @@ func _build_mini_inspector() -> Control:
 	grid.add_child(_name_line_edit);
 	grid.add_child(_label("Region"));
 	
-	_region_edit = Vector4iEdit.new();
-	_region_edit.set_display_name("X", "Y", "W", "H", "px");
-	_region_edit.value_changed.connect(func(value : Vector4i):
+	_region_edit = _rect_edit(func(rect : Rect2i):
 		if !_inspecting_atlas_texture_info: return;
-		var region := _to_rect(value);
-		if !_inspecting_atlas_texture_info.try_set_region(region): return;
-		_modifying_region_buffer = region;
+		if !_inspecting_atlas_texture_info.try_set_region(rect): return;
+		_modifying_region_buffer = rect;
 		_update_controls();
 	);
 	grid.add_child(_region_edit);
 	
 	grid.add_child(_label("Margin"));
 	
-	_margin_edit = Vector4iEdit.new();
-	_region_edit.set_display_name("X", "Y", "W", "H", "px");
-	_region_edit.value_changed.connect(func(value : Vector4i):
+	_margin_edit = _rect_edit(func(rect : Rect2i):
 		if !_inspecting_atlas_texture_info: return;
-		var margin := _to_rect(value);
-		if !_inspecting_atlas_texture_info.try_set_region(margin): return;
+		if !_inspecting_atlas_texture_info.try_set_margin(rect): return;
 		_update_controls();
 	);
 	grid.add_child(_margin_edit);
@@ -522,15 +529,18 @@ func _calculate_handle_position(position : Vector2, prev_position : Vector2, nex
 	
 	array[index + 1] = position + offset;
 
-func _create_slice_and_set_to_inspecting(region : Rect2, margin : Rect2, fileter_clip : bool) -> void:
+func _create_slice(region : Rect2, margin : Rect2, filter_clip : bool) -> void:
 	_inspecting_atlas_texture_info = EditingAtlasTextureInfo.create_empty(
 			region, 
 			margin,
-			fileter_clip,
+			filter_clip,
 			_inspecting_tex_name,
 			_editing_atlas_texture_info
 		);
 	_editing_atlas_texture_info.append(_inspecting_atlas_texture_info);
+
+func _create_slice_and_set_to_inspecting(region : Rect2, margin : Rect2, filter_clip : bool) -> void:
+	_create_slice(region, margin, filter_clip);
 	_update_inspecting_metrics(_inspecting_atlas_texture_info);
 
 func _set_editing_texture(texture : Texture2D) -> void:
@@ -553,7 +563,6 @@ func _set_editing_texture(texture : Texture2D) -> void:
 	_update_inspecting_texture();
 	_editor_drawer.queue_redraw();
 	_is_requesting_center = true;
-	pass;
 
 func _on_tex_changed() -> void:
 	if !_gui_instance or !_gui_instance.visible: return;
@@ -597,10 +606,10 @@ func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 
 	_filter_clip_check_box.set_pressed_no_signal(info.filter_clip);
 
-func _to_rect(value : Vector4i) -> Rect2i:
+static func _to_rect(value : Vector4i) -> Rect2i:
 	return Rect2i(value.x, value.y, value.z, value.w);
 
-func _to_vector(value : Rect2i) -> Vector4i:
+static func _to_vector(value : Rect2i) -> Vector4i:
 	return Vector4i(value.position.x, value.position.y, value.size.x, value.size.y);
 
 func _update_controls() -> void:
@@ -626,7 +635,6 @@ func _update_controls() -> void:
 	_mini_inspector_window.propagate_call(&"set_editable", [is_inspecting_atlas_texture]);
 	_mini_inspector_window.modulate = Color.WHITE if is_inspecting_atlas_texture else Color(1.0, 1.0, 1.0, 0.5);
 	_editor_drawer.queue_redraw();
-	pass;
 
 func _calculate_offset(region : Rect2, drag_type : DRAG_TYPE, diff : Vector2) -> Rect2:
 	match drag_type:
@@ -671,23 +679,23 @@ func _pan(scroll_vec : Vector2) -> void:
 	_vscroll.value -= scroll_vec.y;
 
 #region GUI Utilities
-func _label(text : String) -> Label:
+static func _label(text : String) -> Label:
 	var label := Label.new();
 	label.text = text;
 	return label;
 
-func _button(text : String, on_press : Callable) -> Button:
+static func _button(text : String, on_press : Callable) -> Button:
 	var button := Button.new();
 	button.text = text;
 	button.pressed.connect(on_press);
 	return button;
 
-func _line_edit(value_changed : Callable) -> LineEdit:
+static func _line_edit(value_changed : Callable) -> LineEdit:
 	var line_edit := LineEdit.new();
 	line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
 	return line_edit;
 
-func _spin(value_changed : Callable) -> SpinBox:
+static func _spin(value_changed : Callable) -> SpinBox:
 	var spin := SpinBox.new();
 	spin.value_changed.connect(value_changed);
 	spin.suffix = "px";
@@ -700,22 +708,30 @@ func _spin(value_changed : Callable) -> SpinBox:
 	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
 	return spin;
 
-func _check_box(text : String) -> CheckBox:
+static func _check_box(text : String) -> CheckBox:
 	var box := CheckBox.new();
 	box.text = text;
 	return box;
 
-func _check_button(text : String) -> CheckButton:
+static func _check_button(text : String) -> CheckButton:
 	var button := CheckButton.new();
 	button.text = text;
 	return button;
 
-func _hspacer() -> Control:
+static func _hspacer() -> Control:
 	var spacer := Control.new();
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
 	return spacer;
 	
-func _zoom_button(tooltip_text : String, icon_name : String, on_press : Callable) -> Button:
+static func _rect_edit(value_changed : Callable) -> Vector4iEdit:
+	var edit := Vector4iEdit.new();
+	edit.set_display_name("X", "Y", "W", "H", "px");
+	edit.value_changed.connect(func(value : Vector4i):
+		value_changed.call(_to_rect(value));
+	);
+	return edit;
+	
+static func _zoom_button(tooltip_text : String, icon_name : String, on_press : Callable) -> Button:
 	var button := Button.new();
 	button.flat = true;
 	button.tooltip_text = tooltip_text;
@@ -766,7 +782,202 @@ func _find_texture_in_dir_recursive(source_tex : Texture2D, directory : EditorFi
 #endregion
 
 #region Slicer
+
+var _slicer_type_opt_btn : OptionButton;
+var _cell_size_edit : Vector2iEdit;
+var _col_row_edit : Vector2iEdit;
+var _slicer_offset_edit : Vector2iEdit;
+var _padding_edit : Vector2iEdit;
+var _slicer_margin_edit : Vector4iEdit;
+var _slicer_filter_clip_check : CheckBox;
+var _slice_method_opt_btn : OptionButton;
+
+func _build_slicer_menu() -> Control:
+	var array : Array[VBoxContainer] = [];
+	var outer_container := _build_base_float_window(array);
+	var vbox_container = array[0];
+	
+	var grid := GridContainer.new();
+	grid.columns = 2;
+	vbox_container.add_child(grid);
+	
+	grid.add_child(_label("Slicer Type"));
+	_slicer_type_opt_btn = OptionButton.new();
+	_slicer_type_opt_btn.add_item("Automatic", 0);
+	_slicer_type_opt_btn.add_item("Cell Size", 1);
+	_slicer_type_opt_btn.add_item("Cell Count", 2);
+	grid.add_child(_slicer_type_opt_btn);
+	
+	# CellSize
+	var cell_size_label := _label("Cell Size");
+	_cell_size_edit = Vector2iEdit.new();
+	_cell_size_edit.min = Vector2.ONE;
+	_cell_size_edit.value = Vector2(16.0, 16.0);
+	_cell_size_edit.value_changed.connect(_preview_current_slice_deferred);
+	grid.add_child(cell_size_label); 
+	grid.add_child(_cell_size_edit);
+	
+	# CellCount
+	var col_row_label := _label("Columns & Rows");
+	_col_row_edit = Vector2iEdit.new();
+	_col_row_edit.min = Vector2.ONE;
+	_col_row_edit.value = Vector2(8, 8);
+	_col_row_edit.value_changed.connect(_preview_current_slice_deferred);
+	grid.add_child(col_row_label); 
+	grid.add_child(_col_row_edit); 
+	
+	# CellSize, CellCount
+	var offset_label := _label("Offset");
+	_slicer_offset_edit = Vector2iEdit.new();
+	_slicer_offset_edit.value_changed.connect(_preview_current_slice_deferred);
+	var padding_label := _label("Padding");
+	_padding_edit = Vector2iEdit.new();
+	_padding_edit.value_changed.connect(_preview_current_slice_deferred);
+	grid.add_child(offset_label); 
+	grid.add_child(_slicer_offset_edit); 
+	grid.add_child(padding_label);
+	grid.add_child(_padding_edit);
+	
+	grid.add_child(_label("Margin"));
+	_slicer_margin_edit = _rect_edit(_preview_current_slice_deferred);
+	grid.add_child(_slicer_margin_edit);
+	grid.add_child(_label("Filter Clip"));
+	_slicer_filter_clip_check = _check_box("Enable");
+	_slicer_filter_clip_check.toggled.connect(_preview_current_slice_deferred);
+	grid.add_child(_slicer_filter_clip_check);
+	grid.add_child(_label("Slice Method"));
+	_slice_method_opt_btn = OptionButton.new();
+	_slice_method_opt_btn.item_selected.connect(_preview_current_slice_deferred);
+	_slice_method_opt_btn.add_item("Ignore Existing (Additive)", 0);
+	_slice_method_opt_btn.add_item("Avoid Existing (Smart)", 1);
+	_slice_method_opt_btn.selected = 0;
+	grid.add_child(_slice_method_opt_btn);
+	
+	vbox_container.add_child(_button("Slice", _perform_slice));
+	
+	var update_current_selection_function := func(index : int):
+		var is_automatic := index == 0;
+		var is_by_cell_size := index == 1;
+		var is_by_cell_count := index == 2;
+		var is_by_cell_size_or_count := is_by_cell_size or is_by_cell_count;
+		
+		cell_size_label.visible = is_by_cell_size;
+		_cell_size_edit.visible = is_by_cell_size;
+		
+		col_row_label.visible = is_by_cell_count;
+		_col_row_edit.visible = is_by_cell_count;
+		
+		offset_label.visible = is_by_cell_size_or_count;
+		_slicer_offset_edit.visible =  is_by_cell_size_or_count;
+		padding_label.visible = is_by_cell_size_or_count;
+		_padding_edit.visible =  is_by_cell_size_or_count;
+		
+		_preview_current_slice();
+	
+	_slicer_type_opt_btn.item_selected.connect(update_current_selection_function);
+	_slicer_type_opt_btn.selected = 0;
+	update_current_selection_function.call(0);
+	
+	return outer_container;
+
+func _preview_current_slice_deferred(value : Variant) -> void:
+	call_deferred(&"_preview_current_slice");
+
+func _show_slicer_menu() -> void:
+	_slicer_window.show();
+	_preview_current_slice();
+	_editor_drawer.queue_redraw();
+
 func _hide_slicer_menu() -> void:
-	# TODO
-	pass
+	_slice_preview.clear();
+	_slicer_window.hide();
+	_editor_drawer.queue_redraw();
+	
+func _preview_current_slice() -> void:
+	_slice_preview.clear();
+	if !_inspecting_texture: return;
+	var offset := _slicer_offset_edit.value;
+	var padding := _padding_edit.value;
+	match _slicer_type_opt_btn.selected:
+		0: # Automatic
+			pass;
+		1: # Cell Size
+			var cell_size := _cell_size_edit.value;
+			if cell_size.x == 0 or cell_size.y == 0: return;
+			_calculate_slice_by_cell_size(_inspecting_texture, _slice_preview, cell_size, offset, padding);
+		2: # Cell Count
+			var cell_count := _col_row_edit.value;
+			if cell_count.x == 0 or cell_count.y == 0: return;
+			_calculate_slice_by_cell_count(_inspecting_texture, _slice_preview, cell_count, offset, padding);
+	_editor_drawer.queue_redraw();
+
+func _perform_slice() -> void:
+	if !_inspecting_texture: return;
+	match _slicer_type_opt_btn.selected:
+		0: # Automatic
+			_slice_preview.clear();
+			_calculate_automatic_slice(_inspecting_texture, _slice_preview);
+		1: # Cell Size (pre-calculated in preview)
+			pass;
+		2: # Cell Count (pre-calculated in preview)
+			pass;
+	
+	if _slice_method_opt_btn.selected == 1: # Avoid Existing (Smart)
+		for index in range(_slice_preview.size() - 1, -1, -1):
+			var slice := _slice_preview[index];
+			var has_intersection := false;
+			for match_candidate in _editing_atlas_texture_info:
+				if !match_candidate.region.intersects(slice): continue;
+				has_intersection = true;
+				break;
+			if !has_intersection : continue;
+			_slice_preview.remove_at(index);
+			
+	var filter_clip = _slicer_filter_clip_check.button_pressed;
+	
+	var margin = _to_rect(_slicer_margin_edit.value);
+
+	for slice in _slice_preview:
+		_create_slice(slice, margin, filter_clip);
+		
+	_slice_preview.clear();
+	_update_controls();
+
+static func _calculate_automatic_slice(texture : Texture2D, slice_info : Array[Rect2]) -> void:
+	var mask := BitMap.new();
+	mask.create_from_image_alpha(texture.get_image());
+	var mask_rect := Rect2i(Vector2i.ZERO, mask.get_size());
+	var polygons := mask.opaque_to_polygons(mask_rect, 0.0);
+	
+	var raw_slice_data : Array[Rect2] = [];
+	
+	for polygon in polygons:
+		var rect := Rect2(polygon[0], Vector2.ZERO);
+		for index in range(1, polygon.size()):
+			rect = rect.expand(polygon[index]);
+		raw_slice_data.append(rect);
+	
+	for slice in raw_slice_data:
+		var is_enclosed := false;
+		for match_slice in raw_slice_data:
+			if match_slice == slice: continue;
+			if !match_slice.encloses(slice): continue;
+			is_enclosed = true;
+			break;
+		if is_enclosed: continue;
+		slice_info.append(slice);
+
+static func _calculate_slice_by_cell_count(texture : Texture2D, slice_info : Array[Rect2], column_row : Vector2, offset : Vector2, margin : Vector2) -> void:
+	var size := texture.get_size();
+	var pixel_size := size / Vector2(maxf(column_row.x, 1.0), maxf(column_row.y, 1.0));
+	_calculate_slice_by_cell_size(texture, slice_info, pixel_size, offset, margin);
+
+static func _calculate_slice_by_cell_size(texture : Texture2D, slice_info : Array[Rect2], pixel_size : Vector2, offset : Vector2, margin : Vector2) -> void:
+	var size := texture.get_size();
+	var width := size.x;
+	var height := size.y;
+	pixel_size = Vector2(maxf(pixel_size.x, 1.0), maxf(pixel_size.y, 1.0));
+	for y in range(offset.y, height, pixel_size.y + margin.y):
+		for x in range(offset.x, width, pixel_size.x + margin.x):
+			slice_info.append(Rect2(x, y, pixel_size.x, pixel_size.y));
 #endregion

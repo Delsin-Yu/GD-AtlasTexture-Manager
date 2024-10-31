@@ -418,14 +418,8 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 var _title_label : Label;
 var _new_label : Label;
 var _name_line_edit : LineEdit;
-var _region_x_spin_box : SpinBox;
-var _region_y_spin_box : SpinBox;
-var _region_w_spin_box : SpinBox;
-var _region_h_spin_box : SpinBox;
-var _margin_x_spin_box : SpinBox;
-var _margin_y_spin_box : SpinBox;
-var _margin_w_spin_box : SpinBox;
-var _margin_h_spin_box : SpinBox;
+var _region_edit : Vector4iEdit;
+var _margin_edit : Vector4iEdit;
 var _filter_clip_check_box : CheckBox;
 var _delete_slice_btn : Button;
 
@@ -467,107 +461,28 @@ func _build_mini_inspector() -> Control:
 	grid.add_child(_name_line_edit);
 	grid.add_child(_label("Region"));
 	
-	var region_grid := GridContainer.new();
-	region_grid.columns = 4;
-	grid.add_child(region_grid);
-	
-	region_grid.add_child(_label("X"));
-	
-	_region_x_spin_box = _spin(func(value : float):
+	_region_edit = Vector4iEdit.new();
+	_region_edit.set_display_name("X", "Y", "W", "H", "px");
+	_region_edit.value_changed.connect(func(value : Vector4i):
 		if !_inspecting_atlas_texture_info: return;
-		var region := _inspecting_atlas_texture_info.region;
-		region.position.x = value;
+		var region := _to_rect(value);
 		if !_inspecting_atlas_texture_info.try_set_region(region): return;
 		_modifying_region_buffer = region;
 		_update_controls();
 	);
-	region_grid.add_child(_region_x_spin_box);
-	
-	region_grid.add_child(_label("Y"));
-	
-	_region_y_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var region := _inspecting_atlas_texture_info.region;
-		region.position.y = value;
-		if !_inspecting_atlas_texture_info.try_set_region(region): return;
-		_modifying_region_buffer = region;
-		_update_controls();
-	);
-	region_grid.add_child(_region_y_spin_box);
-	
-	region_grid.add_child(_label("W"));
-	
-	_region_w_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var region := _inspecting_atlas_texture_info.region;
-		region.size.x = value;
-		if !_inspecting_atlas_texture_info.try_set_region(region): return;
-		_modifying_region_buffer = region;
-		_update_controls();
-	);
-	region_grid.add_child(_region_w_spin_box);
-	
-	region_grid.add_child(_label("H"));
-	
-	_region_h_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var region := _inspecting_atlas_texture_info.region;
-		region.size.y = value;
-		if !_inspecting_atlas_texture_info.try_set_region(region): return;
-		_modifying_region_buffer = region;
-		_update_controls();
-	);
-	region_grid.add_child(_region_h_spin_box);
+	grid.add_child(_region_edit);
 	
 	grid.add_child(_label("Margin"));
 	
-	var margin_grid := GridContainer.new();
-	margin_grid.columns = 4;
-	grid.add_child(margin_grid);
-	
-	margin_grid.add_child(_label("X"));
-	
-	_margin_x_spin_box = _spin(func(value : float):
+	_margin_edit = Vector4iEdit.new();
+	_region_edit.set_display_name("X", "Y", "W", "H", "px");
+	_region_edit.value_changed.connect(func(value : Vector4i):
 		if !_inspecting_atlas_texture_info: return;
-		var margin := _inspecting_atlas_texture_info.margin;
-		margin.position.x = value;
-		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
+		var margin := _to_rect(value);
+		if !_inspecting_atlas_texture_info.try_set_region(margin): return;
 		_update_controls();
 	);
-	margin_grid.add_child(_margin_x_spin_box);
-	
-	margin_grid.add_child(_label("Y"));
-	
-	_margin_y_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var margin := _inspecting_atlas_texture_info.margin;
-		margin.position.y = value;
-		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
-		_update_controls();
-	);
-	margin_grid.add_child(_margin_y_spin_box);
-	
-	margin_grid.add_child(_label("W"));
-	
-	_margin_w_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var margin := _inspecting_atlas_texture_info.margin;
-		margin.size.x = value;
-		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
-		_update_controls();
-	);
-	margin_grid.add_child(_margin_w_spin_box);
-	
-	margin_grid.add_child(_label("H"));
-	
-	_margin_h_spin_box = _spin(func(value : float):
-		if !_inspecting_atlas_texture_info: return;
-		var margin := _inspecting_atlas_texture_info.margin;
-		margin.size.y = value;
-		if !_inspecting_atlas_texture_info.try_set_margin(margin): return;
-		_update_controls();
-	);
-	margin_grid.add_child(_margin_h_spin_box);
+	grid.add_child(_margin_edit);
 	
 	grid.add_child(_label("Filter Clip"));
 	
@@ -665,15 +580,8 @@ func _reset_inspecting_metrics() -> void:
 	_new_label.hide();
 	_delete_slice_btn.disabled = true;
 
-	_region_x_spin_box.set_value_no_signal(0.0);
-	_region_y_spin_box.set_value_no_signal(0.0);
-	_region_w_spin_box.set_value_no_signal(0.0);
-	_region_h_spin_box.set_value_no_signal(0.0);
-
-	_margin_x_spin_box.set_value_no_signal(0.0);
-	_margin_y_spin_box.set_value_no_signal(0.0);
-	_margin_w_spin_box.set_value_no_signal(0.0);
-	_margin_h_spin_box.set_value_no_signal(0.0);
+	_region_edit.set_value_no_signal(Vector4i.ZERO);
+	_margin_edit.set_value_no_signal(Vector4i.ZERO);
 
 	_filter_clip_check_box.set_pressed_no_signal(false);
 
@@ -684,18 +592,17 @@ func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	_new_label.visible = is_temp;
 	_delete_slice_btn.disabled = !is_temp;
 
-	_region_x_spin_box.set_value_no_signal(info.region.position.x);
-	_region_y_spin_box.set_value_no_signal(info.region.position.y);
-	_region_w_spin_box.set_value_no_signal(info.region.size.x);
-	_region_h_spin_box.set_value_no_signal(info.region.size.y);
-
-	_margin_x_spin_box.set_value_no_signal(info.margin.position.x);
-	_margin_y_spin_box.set_value_no_signal(info.margin.position.y);
-	_margin_w_spin_box.set_value_no_signal(info.margin.size.x);
-	_margin_h_spin_box.set_value_no_signal(info.margin.size.y);
+	_region_edit.set_value_no_signal(_to_vector(info.region));
+	_margin_edit.set_value_no_signal(_to_vector(info.margin));
 
 	_filter_clip_check_box.set_pressed_no_signal(info.filter_clip);
-	
+
+func _to_rect(value : Vector4i) -> Rect2i:
+	return Rect2i(value.x, value.y, value.z, value.w);
+
+func _to_vector(value : Rect2i) -> Vector4i:
+	return Vector4i(value.position.x, value.position.y, value.size.x, value.size.y);
+
 func _update_controls() -> void:
 	var is_editing_asset := true if _inspecting_texture else false;
 	_gui_instance.propagate_call(&"set_disabled", [!is_editing_asset]);

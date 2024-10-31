@@ -27,6 +27,11 @@ func is_temp() -> bool:
 		return false;
 	return true;
 
+func convert_to_temp() -> void:
+	_backing = null;
+	_resource_path = "";
+	_modified = true;
+
 func _init(backing : AtlasTexture, region : Rect2, margin : Rect2, filter_clip : bool, name : String, resource_path : String) -> void:
 	_backing = backing;
 	_region = region;
@@ -99,7 +104,9 @@ func apply_changes(source_texture : Texture2D, source_texture_dir : String) -> S
 #region Static Factory Functions
 
 static func create(atlas_texture : AtlasTexture, resource_path : String) -> EditingAtlasTextureInfo:
-	return EditingAtlasTextureInfo.new(atlas_texture, atlas_texture.region, atlas_texture.margin, atlas_texture.filter_clip, resource_path.get_file().get_basename(), resource_path);
+	var instance := EditingAtlasTextureInfo.new(atlas_texture, atlas_texture.region, atlas_texture.margin, atlas_texture.filter_clip, resource_path.get_file().get_basename(), resource_path);
+	instance._modified = false;
+	return instance;
 
 static func create_empty(region : Rect2, margin : Rect2, filter_clip : bool, name : String, exisiting_textures : Array[EditingAtlasTextureInfo]) -> EditingAtlasTextureInfo:
 	var name_lower = name.to_lower();

@@ -4,10 +4,13 @@ extends EditorPlugin
 static var _temp_slice_color := Color.YELLOW;
 static var _default_slice_color := Color.WHITE;
 static var _selected_slice_color := Color.GREEN;
-static var _preview_slice_color := Color.BLUE;
+static var _changed_slice_color := Color.GREEN_YELLOW;
+static var _preview_slice_color := Color.CYAN;
+static var _dim_slice_color := Color.GRAY;
 static var _selected_handle_texture := EditorInterface.get_editor_theme().get_icon("EditorHandle", "EditorIcons");
 
 var _gui_instance : Control;
+var _resource_filesystem := EditorInterface.get_resource_filesystem();
 static var _window_name := "AtlasTexture Manager";
 static var _window_name_changed := "(*) AtlasTexture Manager";
 
@@ -17,10 +20,12 @@ func _enter_tree() -> void:
 	_update_controls();
 	_reset_inspecting_metrics();
 	add_control_to_dock(EditorPlugin.DOCK_SLOT_LEFT_UR, _gui_instance);
+	_resource_filesystem.filesystem_changed.connect(_remove_invalid_atlas_instances);
 	pass;
 
 func _exit_tree() -> void:
 	remove_control_from_bottom_panel(_gui_instance);
+	_resource_filesystem.filesystem_changed.disconnect(_remove_invalid_atlas_instances);
 	_gui_instance.queue_free();
 	pass;
 
@@ -33,6 +38,16 @@ func _handles(object) -> bool:
 func _edit(object : Object) -> void:
 	_set_editing_texture(object as Texture2D);
 #endregion
+
+func _remove_invalid_atlas_instances() -> void:
+	if !_editing_atlas_texture_info: return;
+	var modified := false;
+	for info in _editing_atlas_texture_info:
+		if info.is_temp(): continue;
+		if ResourceLoader.exists(info.resource_path): continue;
+		info.convert_to_temp();
+		modified = true;
+	_update_controls();
 
 func _build_gui() -> Control:
 	var view := VBoxContainer.new();
@@ -54,15 +69,13 @@ func _build_top_tool_bar() -> Control:
 		
 		var scan_result : Array[EditingAtlasTextureInfo] = [];
 		
-		var file_system := EditorInterface.get_resource_filesystem();
-		
 		if all_directories:
-			var directory := file_system.get_filesystem();
+			var directory := _resource_filesystem.get_filesystem();
 			_find_texture_in_dir_recursive(_inspecting_texture, directory, scan_result);
 		else:
 			var source_path := _inspecting_texture.resource_path;
 			var directory_path := source_path.get_base_dir();
-			var directory := file_system.get_filesystem_path(directory_path);
+			var directory := _resource_filesystem.get_filesystem_path(directory_path);
 			_find_texture_in_dir(_inspecting_texture, directory, scan_result);
 			pass
 		
@@ -78,7 +91,7 @@ func _build_top_tool_bar() -> Control:
 	top_tool_container.add_child(scan_in_dir_btn);
 	top_tool_container.add_child(scan_in_proj_btn);
 	return top_tool_container;
-	
+
 
 var _save_btn : Button;
 var _discard_btn : Button;
@@ -102,12 +115,11 @@ func _build_btm_tool_bar(additive_elements : Array[Control]) -> Control:
 	);
 	
 	_discard_btn = _button("Create & Update", func():
-		var editor_file_system = EditorInterface.get_resource_filesystem();
 		for info in _editing_atlas_texture_info:
 			var path := info.apply_changes(_inspecting_texture, _current_source_texture_path)
-			editor_file_system.update_file(path);
+			_resource_filesystem.update_file(path);
 			
-		editor_file_system.scan();
+		_resource_filesystem.scan();
 		
 		_update_controls();
 		if _inspecting_atlas_texture_info: 
@@ -220,11 +232,17 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 		
 		if _is_dragging:
 			_draw_rect_frame(_modifying_region_buffer, _selected_handle_texture, _selected_slice_color, _drag_type);
+			for info in _editing_atlas_texture_info:
+				if _inspecting_atlas_texture_info != info: 
+					_draw_rect_frame(info.region, _selected_handle_texture, _dim_slice_color, DRAG_TYPE.AREA);
 		else:
 			for info in _editing_atlas_texture_info:
 				if info == _inspecting_atlas_texture_info:
 					continue;
-				_draw_rect_frame(info.region, _selected_handle_texture, _default_slice_color if !info.is_temp() else _temp_slice_color, DRAG_TYPE.AREA);
+				var draw_color := _default_slice_color;
+				if info.is_temp(): draw_color = _temp_slice_color;
+				elif info.modified: draw_color = _changed_slice_color;
+				_draw_rect_frame(info.region, _selected_handle_texture, draw_color, DRAG_TYPE.AREA);
 				
 			if _inspecting_atlas_texture_info:
 				_draw_rect_frame(_modifying_region_buffer, _selected_handle_texture, _selected_slice_color, DRAG_TYPE.NONE);
@@ -319,6 +337,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 				
 				flush_region_modifying_buffer_function.call();
 				_is_dragging = false;
+				_editor_drawer.queue_redraw();
 				return;
 				
 			if (mouse_button.button_mask & MOUSE_BUTTON_MASK_LEFT) == 0: return;
@@ -459,6 +478,7 @@ func _build_mini_inspector() -> Control:
 		var region := _inspecting_atlas_texture_info.region;
 		region.position.x = value;
 		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_modifying_region_buffer = region;
 		_update_controls();
 	);
 	region_grid.add_child(_region_x_spin_box);
@@ -470,6 +490,7 @@ func _build_mini_inspector() -> Control:
 		var region := _inspecting_atlas_texture_info.region;
 		region.position.y = value;
 		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_modifying_region_buffer = region;
 		_update_controls();
 	);
 	region_grid.add_child(_region_y_spin_box);
@@ -481,6 +502,7 @@ func _build_mini_inspector() -> Control:
 		var region := _inspecting_atlas_texture_info.region;
 		region.size.x = value;
 		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_modifying_region_buffer = region;
 		_update_controls();
 	);
 	region_grid.add_child(_region_w_spin_box);
@@ -492,6 +514,7 @@ func _build_mini_inspector() -> Control:
 		var region := _inspecting_atlas_texture_info.region;
 		region.size.y = value;
 		if !_inspecting_atlas_texture_info.try_set_region(region): return;
+		_modifying_region_buffer = region;
 		_update_controls();
 	);
 	region_grid.add_child(_region_h_spin_box);
@@ -592,11 +615,9 @@ func _create_slice_and_set_to_inspecting(region : Rect2, margin : Rect2, fileter
 			_inspecting_tex_name,
 			_editing_atlas_texture_info
 		);
-	return;
 	_editing_atlas_texture_info.append(_inspecting_atlas_texture_info);
 	_update_inspecting_metrics(_inspecting_atlas_texture_info);
 
-# 无法创建多个切片
 func _set_editing_texture(texture : Texture2D) -> void:
 	if _inspecting_texture:
 		_inspecting_texture.changed.disconnect(_on_tex_changed);
@@ -697,7 +718,6 @@ func _update_controls() -> void:
 	_mini_inspector_window.propagate_call(&"set_disabled", [!is_inspecting_atlas_texture]);
 	_mini_inspector_window.propagate_call(&"set_editable", [is_inspecting_atlas_texture]);
 	_mini_inspector_window.modulate = Color.WHITE if is_inspecting_atlas_texture else Color(1.0, 1.0, 1.0, 0.5);
-
 	_editor_drawer.queue_redraw();
 	pass;
 

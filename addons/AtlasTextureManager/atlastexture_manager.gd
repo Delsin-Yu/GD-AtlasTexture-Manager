@@ -11,8 +11,11 @@ static var _selected_handle_texture := EditorInterface.get_editor_theme().get_ic
 
 var _gui_instance : Control;
 var _resource_filesystem := EditorInterface.get_resource_filesystem();
-static var _window_name := "AtlasTexture Manager";
-static var _window_name_changed := "(*) AtlasTexture Manager";
+
+const _window_name := "AtlasTexture Manager";
+const _window_name_changed := "(*) AtlasTexture Manager";
+const _transparent := Color(Color.WHITE, 0.5);
+
 
 #region EditorMethods
 func _enter_tree() -> void:
@@ -20,7 +23,7 @@ func _enter_tree() -> void:
 	_update_controls();
 	_reset_inspecting_metrics();
 	_hide_slicer_menu();
-	add_control_to_dock(EditorPlugin.DOCK_SLOT_LEFT_UR, _gui_instance);
+	add_control_to_bottom_panel(_gui_instance, _window_name);
 	_resource_filesystem.filesystem_changed.connect(_remove_invalid_atlas_instances);
 
 func _exit_tree() -> void:
@@ -428,11 +431,11 @@ var _margin_edit : Vector4iEdit;
 var _filter_clip_check_box : CheckBox;
 var _delete_slice_btn : Button;
 
-func _build_base_float_window(container : Array[VBoxContainer]) -> Control:
+func _build_base_float_window(container : Array[VBoxContainer], back_ground_alpha : float) -> Control:
 	var outer_container := PanelContainer.new();
-	outer_container.self_modulate = Color(Color.WHITE, .5);
+	outer_container.self_modulate = Color(Color.WHITE, back_ground_alpha);
 	var panel := Panel.new();
-	panel.self_modulate = Color(Color.WHITE, .5);
+	panel.self_modulate = Color(Color.WHITE, back_ground_alpha);
 	outer_container.add_child(panel);
 	var margin_container := MarginContainer.new();
 	margin_container.add_theme_constant_override(&"margin_left", 10);
@@ -449,7 +452,7 @@ func _build_base_float_window(container : Array[VBoxContainer]) -> Control:
 
 func _build_mini_inspector() -> Control:
 	var array : Array[VBoxContainer] = [];
-	var outer_container := _build_base_float_window(array);
+	var outer_container := _build_base_float_window(array, 0.5);
 	var vbox_container = array[0];
 	
 	var title_hbox := HBoxContainer.new();
@@ -469,6 +472,7 @@ func _build_mini_inspector() -> Control:
 	grid.add_child(_label("Name"));
 	_name_line_edit = _line_edit(func(value : String):
 		if !_inspecting_atlas_texture_info or !_inspecting_atlas_texture_info.is_temp() or !_inspecting_atlas_texture_info.try_set_name(value): return;
+		_name_line_edit.text = _inspecting_atlas_texture_info.name;
 		_update_controls();
 	);
 	grid.add_child(_name_line_edit);
@@ -593,6 +597,10 @@ func _reset_inspecting_metrics() -> void:
 	_margin_edit.set_value_no_signal(Vector4i.ZERO);
 
 	_filter_clip_check_box.set_pressed_no_signal(false);
+	_mini_inspector_window.propagate_call(&"set_disabled", [true]);
+	_mini_inspector_window.propagate_call(&"set_editable", [false]);
+	_mini_inspector_window.modulate = _transparent;
+	
 
 func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	_name_line_edit.text = info.name;
@@ -605,6 +613,9 @@ func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	_margin_edit.set_value_no_signal(_to_vector(info.margin));
 
 	_filter_clip_check_box.set_pressed_no_signal(info.filter_clip);
+	_mini_inspector_window.propagate_call(&"set_disabled", [false]);
+	_mini_inspector_window.propagate_call(&"set_editable", [true]);
+	_mini_inspector_window.modulate = Color.WHITE;
 
 static func _to_rect(value : Vector4i) -> Rect2i:
 	return Rect2i(value.x, value.y, value.z, value.w);
@@ -616,7 +627,7 @@ func _update_controls() -> void:
 	var is_editing_asset := true if _inspecting_texture else false;
 	_gui_instance.propagate_call(&"set_disabled", [!is_editing_asset]);
 	_gui_instance.propagate_call(&"set_editable", [is_editing_asset]);
-	_gui_instance.modulate = Color.WHITE if is_editing_asset else Color(1.0, 1.0, 1.0, 0.5);
+	_gui_instance.modulate = Color.WHITE if is_editing_asset else _transparent;
 
 	var has_pending_changes := false;
 	
@@ -633,7 +644,7 @@ func _update_controls() -> void:
 	var is_inspecting_atlas_texture := true if _inspecting_atlas_texture_info else false;
 	_mini_inspector_window.propagate_call(&"set_disabled", [!is_inspecting_atlas_texture]);
 	_mini_inspector_window.propagate_call(&"set_editable", [is_inspecting_atlas_texture]);
-	_mini_inspector_window.modulate = Color.WHITE if is_inspecting_atlas_texture else Color(1.0, 1.0, 1.0, 0.5);
+	_mini_inspector_window.modulate = Color.WHITE if is_inspecting_atlas_texture else _transparent;
 	_editor_drawer.queue_redraw();
 
 func _calculate_offset(region : Rect2, drag_type : DRAG_TYPE, diff : Vector2) -> Rect2:
@@ -693,6 +704,7 @@ static func _button(text : String, on_press : Callable) -> Button:
 static func _line_edit(value_changed : Callable) -> LineEdit:
 	var line_edit := LineEdit.new();
 	line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
+	line_edit.text_submitted.connect(value_changed);
 	return line_edit;
 
 static func _spin(value_changed : Callable) -> SpinBox:
@@ -794,7 +806,7 @@ var _slice_method_opt_btn : OptionButton;
 
 func _build_slicer_menu() -> Control:
 	var array : Array[VBoxContainer] = [];
-	var outer_container := _build_base_float_window(array);
+	var outer_container := _build_base_float_window(array, 1.0);
 	var vbox_container = array[0];
 	
 	var grid := GridContainer.new();
@@ -820,6 +832,7 @@ func _build_slicer_menu() -> Control:
 	# CellCount
 	var col_row_label := _label("Columns & Rows");
 	_col_row_edit = Vector2iEdit.new();
+	_col_row_edit.set_display_name("Column", "Row", "");
 	_col_row_edit.min = Vector2.ONE;
 	_col_row_edit.value = Vector2(8, 8);
 	_col_row_edit.value_changed.connect(_preview_current_slice_deferred);

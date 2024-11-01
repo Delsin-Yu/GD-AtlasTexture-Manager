@@ -44,7 +44,7 @@ func _init(backing : AtlasTexture, region : Rect2, margin : Rect2, filter_clip :
 func try_set_name(value : String) -> bool:
 	if _name == value:
 		return false;
-	_name = value;
+	_name = value.validate_filename();
 	_modified = true;
 	return true;
 

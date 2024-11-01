@@ -498,6 +498,11 @@ func _build_mini_inspector() -> Control:
 	grid.add_child(_label("Filter Clip"));
 	
 	_filter_clip_check_box = _check_box("Enabled");
+	_filter_clip_check_box.toggled.connect(func(value : bool):
+		if !_inspecting_atlas_texture_info: return;
+		if !_inspecting_atlas_texture_info.try_set_filter_clip(value): return;
+		_update_controls();
+	);
 	grid.add_child(_filter_clip_check_box);
 	
 	_delete_slice_btn = _button("Delete", func():

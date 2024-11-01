@@ -868,7 +868,7 @@ func _build_slicer_menu() -> Control:
 	_slice_method_opt_btn.item_selected.connect(_preview_current_slice_deferred);
 	_slice_method_opt_btn.add_item("Ignore Existing (Additive)", 0);
 	_slice_method_opt_btn.add_item("Avoid Existing (Smart)", 1);
-	_slice_method_opt_btn.selected = 0;
+	_slice_method_opt_btn.selected = 1;
 	grid.add_child(_slice_method_opt_btn);
 	
 	vbox_container.add_child(_button("Slice", _perform_slice));

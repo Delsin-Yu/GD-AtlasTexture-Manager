@@ -941,6 +941,8 @@ func _perform_slice() -> void:
 		_create_slice(slice, margin, filter_clip);
 		
 	_slice_preview.clear();
+	_inspecting_atlas_texture_info = null;
+	_reset_inspecting_metrics();
 	_update_controls();
 
 static func _calculate_automatic_slice(texture : Texture2D, slice_info : Array[Rect2]) -> void:

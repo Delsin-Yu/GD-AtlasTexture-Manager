@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://j5fo5u5u24le"
-path="res://.godot/imported/slice_sample.png-a31f208a53e506cfdf4adc7dbf74f86f.ctex"
+uid="uid://i6e78cgkam6s"
+path="res://.godot/imported/slice_sample_grid_tight.png-abef284f61be6532c766e69e9d4834d4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://slice_sample.png"
-dest_files=["res://.godot/imported/slice_sample.png-a31f208a53e506cfdf4adc7dbf74f86f.ctex"]
+source_file="res://slice_sample_grid_tight.png"
+dest_files=["res://.godot/imported/slice_sample_grid_tight.png-abef284f61be6532c766e69e9d4834d4.ctex"]
 
 [params]
 

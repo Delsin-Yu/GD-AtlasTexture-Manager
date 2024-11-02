@@ -125,7 +125,6 @@ func _build_btm_tool_bar(additive_elements : Array[Control]) -> Control:
 	_discard_btn = _button("Create & Update", func():
 		for info in _editing_atlas_texture_info:
 			var path := info.apply_changes(_inspecting_texture, _current_source_texture_path)
-			_resource_filesystem.update_file(path);
 			
 		_resource_filesystem.scan();
 		
@@ -193,6 +192,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 	main_viewport.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
 	
 	var _editor_drawer_main := Panel.new();
+	_editor_drawer_main.self_modulate = _transparent;
 	_editor_drawer_main.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
 	_editor_drawer_main.size_flags_vertical = Control.SIZE_EXPAND_FILL;
 	main_viewport.add_child(_editor_drawer_main);
@@ -363,6 +363,7 @@ func _build_main_viewport(bottom_elements : Array[Control]) -> Control:
 					for index in range(handle_positions.size()):
 						var handle_position := handle_positions[index];
 						if local_mouse_position.distance_to(handle_position) > draw_zoom: continue;
+						if info != _inspecting_atlas_texture_info: continue;
 						_dragging_handle = index as DRAG_TYPE;
 						_dragging_handle_position = handle_position;
 						_inspecting_atlas_texture_info = info;
@@ -431,11 +432,11 @@ var _margin_edit : Vector4iEdit;
 var _filter_clip_check_box : CheckBox;
 var _delete_slice_btn : Button;
 
-func _build_base_float_window(container : Array[VBoxContainer], back_ground_alpha : float) -> Control:
+func _build_base_float_window(container : Array[VBoxContainer], color : Color, back_ground_alpha : float) -> Control:
 	var outer_container := PanelContainer.new();
-	outer_container.self_modulate = Color(Color.WHITE, back_ground_alpha);
+	outer_container.self_modulate = Color(color, back_ground_alpha);
 	var panel := Panel.new();
-	panel.self_modulate = Color(Color.WHITE, back_ground_alpha);
+	panel.self_modulate = Color(color, back_ground_alpha);
 	outer_container.add_child(panel);
 	var margin_container := MarginContainer.new();
 	margin_container.add_theme_constant_override(&"margin_left", 10);
@@ -452,7 +453,7 @@ func _build_base_float_window(container : Array[VBoxContainer], back_ground_alph
 
 func _build_mini_inspector() -> Control:
 	var array : Array[VBoxContainer] = [];
-	var outer_container := _build_base_float_window(array, 0.5);
+	var outer_container := _build_base_float_window(array, Color.DIM_GRAY, 0.5);
 	var vbox_container = array[0];
 	
 	var title_hbox := HBoxContainer.new();
@@ -594,6 +595,8 @@ func _update_inspecting_texture() -> void:
 
 func _reset_inspecting_metrics() -> void:
 	_name_line_edit.text = "";
+	_mini_inspector_window.propagate_call(&"set_disabled", [true]);
+	_mini_inspector_window.propagate_call(&"set_editable", [false]);
 
 	_new_label.hide();
 	_delete_slice_btn.disabled = true;
@@ -602,13 +605,13 @@ func _reset_inspecting_metrics() -> void:
 	_margin_edit.set_value_no_signal(Vector4i.ZERO);
 
 	_filter_clip_check_box.set_pressed_no_signal(false);
-	_mini_inspector_window.propagate_call(&"set_disabled", [true]);
-	_mini_inspector_window.propagate_call(&"set_editable", [false]);
 	_mini_inspector_window.modulate = _transparent;
 	
 
 func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	_name_line_edit.text = info.name;
+	_mini_inspector_window.propagate_call(&"set_disabled", [false]);
+	_mini_inspector_window.propagate_call(&"set_editable", [true]);
 	var is_temp := info.is_temp();
 	_name_line_edit.editable = is_temp;
 	_new_label.visible = is_temp;
@@ -618,8 +621,6 @@ func _update_inspecting_metrics(info : EditingAtlasTextureInfo) -> void:
 	_margin_edit.set_value_no_signal(_to_vector(info.margin));
 
 	_filter_clip_check_box.set_pressed_no_signal(info.filter_clip);
-	_mini_inspector_window.propagate_call(&"set_disabled", [false]);
-	_mini_inspector_window.propagate_call(&"set_editable", [true]);
 	_mini_inspector_window.modulate = Color.WHITE;
 
 static func _to_rect(value : Vector4i) -> Rect2i:
@@ -811,7 +812,7 @@ var _slice_method_opt_btn : OptionButton;
 
 func _build_slicer_menu() -> Control:
 	var array : Array[VBoxContainer] = [];
-	var outer_container := _build_base_float_window(array, 1.0);
+	var outer_container := _build_base_float_window(array, Color.DIM_GRAY, 0.5);
 	var vbox_container = array[0];
 	
 	var grid := GridContainer.new();

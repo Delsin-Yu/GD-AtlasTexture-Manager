@@ -69,8 +69,8 @@ The `AtlasTexture Manager` will display `newly created` `AtlasTexture` regions `
 
 To apply the changes, click the `Create & Update` button. This will convert all `newly created` `AtlasTexture` regions to actual `AtlasTexture` resources and save them to the same directory of the inspecting `Texture2D` resource. The pending changes to the existing `AtlasTexture` resources will also be applied.
 
-> Video TBD
+https://github.com/user-attachments/assets/768530d0-c872-4a3a-a05a-519298342cc7
 
 To discard the changes, click the `Discard` button. This will remove all `newly created` `AtlasTexture` regions and restore all the pending changes to the existing `AtlasTexture` resources.
 
-> Video TBD
+https://github.com/user-attachments/assets/40e95a89-cc63-4333-b808-96547a7423b8

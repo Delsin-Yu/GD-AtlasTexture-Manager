@@ -6,7 +6,7 @@ Supported Godot Version: 4.3 or later.
 
 ## Installation
 
-1. ***TBD*** Download the `GD-AtlasTexture-Manager.zip` from the latest `release`.
+1. Download the `GD-AtlasTexture-Manager.zip` from the latest [release](https://github.com/Delsin-Yu/GD-AtlasTexture-Manager/releases).
 2. Decompress the file and place the `addons` directory into the project root (`res://`).
 3. In Godot Editor, navigate to `Project/Project Settings/Plugins`, locate the `AtlasTexture Manager` from the `Installed Plugins` list, and check the `Enable` box under the `Status` column.
 4. The `AtlasTexure Manager` will launch at the `Bottom Panel`.

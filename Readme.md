@@ -2,7 +2,7 @@
 
 Supported Godot Version: 4.3 or later.
 
-> Image Here
+![image](https://github.com/user-attachments/assets/ebd07d5c-d287-45e1-9722-8f3cd11d7974)
 
 ## Installation
 
@@ -17,13 +17,13 @@ Supported Godot Version: 4.3 or later.
 
 Double-clicking a `Texture2D` resource in the `FileSystem` window will send it to the active `AtlasTexture Manager` window, allowing the developer to modify it further.
 
-> Video TBD
+https://github.com/user-attachments/assets/f60db0d0-9b6e-48ca-bff0-fd93385ff8dc
 
 ### Scan the AtlasTextures that belong to a Texture2D Resource
 
 To scan for `AtlasTextures` that references the inspecting `Texture2D`, use the `Scan in Directory` or `Scan in Project` button. This will search and display the region of the eligible `AtlasTextures` in the inspector.
 
-> Video TBD
+https://github.com/user-attachments/assets/969eef07-5ec0-4f1d-ad3e-bfa959b89afd
 
 ### Create AtlasTextures from a Texture2D Resource
 
@@ -37,25 +37,25 @@ There are three built-in slicers, each for a specific use case.
 
 Create `AtlasTextures` by specifying how many `columns` and `rows` the current `Texture2D` resource contains.
 
-> Video TBD
+https://github.com/user-attachments/assets/4dff2dda-0163-4e2d-bc51-51c57431fcb9
 
 ##### Cell Size Slicer
 
 Create `AtlasTextures` by specifying the size of each element the current `Texture2D` resource contains.
 
-> Video TBD
+https://github.com/user-attachments/assets/018e6dc4-a9f3-41a6-9cd7-b4210573ca89
 
 ##### Automatic Slicer
 
 Create `AtlasTextures` by automatically detecting the content the current `Texture2D` resource contains.
 
-> Video TBD
+https://github.com/user-attachments/assets/7b772ac4-19bf-48c1-b1f0-f6384a7781d0
 
 #### Create AtlasTexture Manually
 
 Click and hold the left mouse button, then drag towards the inspector's bottom right to specify the target's range `AtlasTextures`.
 
-> Video TBD
+https://github.com/user-attachments/assets/c2105972-f22b-4b33-bffe-961916282963
 
 ### Editing the Properties of an AtlasTexture
 

@@ -61,7 +61,7 @@ https://github.com/user-attachments/assets/c2105972-f22b-4b33-bffe-961916282963
 
 Click an existing `AtlasTexture` region inside the inspector will show its properties in the bottom right inspector; editing these values will mark the region `modified`; to write the changes to the actual `AtlasTexture`, the developer needs to [Apply or Discard Modification](#apply-or-discard-modification).
 
-> Developer may only edit or delete the name of a newly created(not yet saved to asset) `AtlasTexture` region.
+> Developer may only delete a newly created(not yet saved to asset) `AtlasTexture` region.
 
 ### Apply or Discard Modification
 

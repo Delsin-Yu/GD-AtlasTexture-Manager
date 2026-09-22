@@ -87,4 +87,5 @@ func _spin(value_changed : Callable) -> SpinBox:
 	spin.allow_greater = true;
 	spin.allow_lesser = true;
 	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL;
+	spin.custom_minimum_size = Vector2(100, 0);
 	return spin;

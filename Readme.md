@@ -61,7 +61,7 @@ https://github.com/user-attachments/assets/c2105972-f22b-4b33-bffe-961916282963
 
 Click an existing `AtlasTexture` region inside the inspector will show its properties in the bottom right inspector; editing these values will mark the region `modified`; to write the changes to the actual `AtlasTexture`, the developer needs to [Apply or Discard Modification](#apply-or-discard-modification).
 
-> Developer may only delete a newly created(not yet saved to asset) `AtlasTexture` region.
+Saved and unsaved slices can be selected together. Pending edits support local undo/redo. Deleting a slice that is already saved to disk lists the resource and its owners in a confirmation dialog before the file is removed.
 
 ### Apply or Discard Modification
 
